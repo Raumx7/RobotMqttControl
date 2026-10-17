@@ -2,6 +2,5 @@
 .idea
 lib
 test
-include/README
 compile_commands.json
 platformio.ini

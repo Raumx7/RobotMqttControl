@@ -2,71 +2,73 @@
 #include <Arduino.h>
 #include <tl/expected.hpp>
 #include <string_view>
+
 #include "L298N.h"
 #include "types.h"
 
-using ControllerResponse = tl::expected<MoveParams, CommandError>;
+using ControllerResponse = tl::expected<CommandType, CommandError>;
 
 class RobotController {
 public:
+    // Constructor
     RobotController(L298N& motors_left, L298N& motors_right);
 
-    void set_brake_mode(BrakeMode brake_mode) { current_move_params_.brake_mode = brake_mode; }
-    BrakeMode get_brake_mode() const { return current_move_params_.brake_mode; }
+    // Set brake mode
+    void set_brake_mode(BrakeMode brake_mode) { params_.brake_mode = brake_mode; }
 
-    // Control directo de motores (potencias independientes)
+    // Direct motors control
     void move(int l_power, int r_power);
 
-    // Movimiento tipo joystick: y = adelante/atrás, x = giro
+    // Joystick movement: y = forward/backward, x = yaw
     void arcade_control(int x_power, int y_power);
 
-    // Detiene el robot con el modo de frenado actual
+    // Stops the drivetrain with the current brake mode
     void stop();
 
-    bool is_stopped() const { return motors_left_.is_stopped() && motors_right_.is_stopped(); }
+    // Get brake mode
+    [[nodiscard]] BrakeMode get_brake_mode() const { return params_.brake_mode; }
 
-    bool is_autonomous() const { return auto_state_ != AutoState::Idle; }
+    // True when both motor groups are stopped
+    [[nodiscard]] bool is_stopped() const { return motors_left_.is_stopped() && motors_right_.is_stopped(); }
 
-    MoveParams get_move_params() const { return current_move_params_; }
+    // True when autonomous routine is running
+    [[nodiscard]] bool is_autonomous() const { return params_.auto_state != AutoState::Idle; }
 
-    // Ejecuta un comando. Devuelve el estado actual o un error.
+    // True when current data is the same as data parameter
+    [[nodiscard]] bool has_same_params(const RobotParams& params) const;
+
+    // Returns the current move params
+    [[nodiscard]] const RobotParams& get_params() const { return params_; }
+
+    // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);
 
-    // Debe llamarse periódicamente desde el loop principal.
-    // Avanza la rutina autónoma si está en curso.
-    void update();
+    // Must be called in the main loop so it does not block other actions
+    void loop();
 
 private:
-    // --- Máquina de estados de la rutina autónoma ---
-    enum class AutoState : uint8_t {
-        Idle,
-        Forward,
-        Turn
-    };
+    // Intern Helper
+    void update_motor_powers(int l_power, int r_power);
 
-    // --- Helpers internos ---
-    void update_move_values(int l_power, int r_power);
-
-    // --- Parsers / handlers por comando ---
+    // Parse commands
     ControllerResponse handle_arcade(std::string_view args);
     ControllerResponse handle_move(std::string_view args);
     ControllerResponse handle_square(std::string_view args);
     ControllerResponse handle_brake_mode(std::string_view args);
     ControllerResponse handle_stop();
 
-    // --- Rutina autónoma ---
+    // Autonomous routine functions
     void start_square(int power, unsigned int forward_ms, unsigned int turn_ms);
     void update_square();
     void finish_autonomous();
 
-    // --- Miembros ---
+    // Motor groups
     L298N& motors_left_;
     L298N& motors_right_;
 
-    MoveParams current_move_params_{};
+    RobotParams params_{};
 
-    // Estado de la rutina autónoma
-    AutoState auto_state_ = AutoState::Idle;
+    // Autonomous
     unsigned long auto_state_start_ms_ = 0;
     unsigned int auto_forward_ms_ = 0;
     unsigned int auto_turn_ms_ = 0;

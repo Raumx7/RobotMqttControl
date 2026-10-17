@@ -1,68 +1,20 @@
 #include "RobotController.h"
-#include <cstdlib>
-#include <cstdio>
+#include "cmd.h"
 
 namespace {
 
-    // Clampa un valor al rango [-100, 100]
+    struct RobotPowers {
+        int l_power;
+        int r_power;
+    };
+
     int clamp_power(int v) {
         if (v > 100) return 100;
         if (v < -100) return -100;
         return v;
     }
 
-    bool parse_int(std::string_view args, int& a) {
-        char buf[16];
-
-        const std::size_t n = args.size() < sizeof(buf) - 1
-                                ? args.size() : sizeof(buf) - 1;
-        for (std::size_t i = 0; i < n; ++i) buf[i] = args[i];
-        buf[n] = '\0';
-
-        char extra;
-        // %n cuenta caracteres consumidos para verificar que no sobra basura
-        int consumed = 0;
-        if (std::sscanf(buf, " %d %n", &a, &consumed) != 1) return false;
-        // Aseguramos que no haya más tokens después
-        if (buf[consumed] != '\0') return false;
-        return true;
-    }
-
-    // Parser minimalista: espera " <int> <int>" y devuelve true si
-    // ambos enteros se parsearon correctamente.
-    bool parse_two_ints(std::string_view args, int& a, int& b) {
-        // Necesitamos una cadena null-terminated para sscanf.
-        // Como los comandos son cortos, copiamos a un buffer pequeño.
-        char buf[32];
-        const std::size_t n = args.size() < sizeof(buf) - 1
-                                ? args.size() : sizeof(buf) - 1;
-        for (std::size_t i = 0; i < n; ++i) buf[i] = args[i];
-        buf[n] = '\0';
-
-        char extra;
-        // %n cuenta caracteres consumidos para verificar que no sobra basura
-        int consumed = 0;
-        if (std::sscanf(buf, " %d %d %n", &a, &b, &consumed) != 2) return false;
-        // Aseguramos que no haya más tokens después
-        if (buf[consumed] != '\0') return false;
-        return true;
-    }
-
-    bool parse_three_ints(std::string_view args, int& a, int& b, int& c) {
-        char buf[48];
-        const std::size_t n = args.size() < sizeof(buf) - 1
-                                ? args.size() : sizeof(buf) - 1;
-        for (std::size_t i = 0; i < n; ++i) buf[i] = args[i];
-        buf[n] = '\0';
-
-        int consumed = 0;
-        if (std::sscanf(buf, " %d %d %d %n", &a, &b, &c, &consumed) != 3) return false;
-        if (buf[consumed] != '\0') return false;
-        return true;
-    }
-
-    // Comprueba si dos MoveParams son iguales
-    bool same_params(const MoveParams& a, const MoveParams& b) {
+    bool same_powers(const RobotPowers& a, const RobotPowers& b) {
         return a.l_power == b.l_power && a.r_power == b.r_power;
     }
 
@@ -76,7 +28,7 @@ RobotController::RobotController(L298N& motors_left, L298N& motors_right)
 }
 
 //==============================================================================
-// Acciones de movimiento
+// Movement actions
 //==============================================================================
 
 void RobotController::move(int l_power, int r_power) {
@@ -86,7 +38,7 @@ void RobotController::move(int l_power, int r_power) {
     motors_left_.set_speed(lp);
     motors_right_.set_speed(rp);
 
-    update_move_values(lp, rp);
+    update_motor_powers(lp, rp);
 }
 
 void RobotController::arcade_control(int x_power, int y_power) {
@@ -100,32 +52,33 @@ void RobotController::arcade_control(int x_power, int y_power) {
 }
 
 void RobotController::stop() {
-    if (current_move_params_.brake_mode == BrakeMode::Brake) {
+    if (params_.brake_mode == BrakeMode::Brake) {
         motors_left_.brake();
         motors_right_.brake();
     } else {
         motors_left_.stop();
         motors_right_.stop();
     }
-    update_move_values(0, 0);
+    update_motor_powers(0, 0);
 }
 
 //==============================================================================
 
-void RobotController::update_move_values(int l_power, int r_power) {
-    current_move_params_.l_power = l_power;
-    current_move_params_.r_power = r_power;
+void RobotController::update_motor_powers(int l_power, int r_power) {
+    params_.l_power = l_power;
+    params_.r_power = r_power;
 }
 
 //==============================================================================
-// Parser de comandos
+// Command Parser
 //==============================================================================
 //
-// Gramática:
-//   A <x> <y>                -> arcade (joystick), x,y en [-100,100]
-//   M <l> <r>                -> move directo, l,r en [-100,100]
-//   S <power> <fw_ms> <tn_ms> -> rutina cuadrada, power en [1,100], ms > 0
-//   X                        -> stop
+// Grammar:
+//   A <x> <y>                  -> arcade (joystick), x,y on [-100,100]
+//   M <l> <r>                  -> direct move, l,r on [-100,100]
+//   S <power> <fw_ms> <tn_ms>  -> autonomous square routine, power on [1,100], ms > 0
+//   B <bkmd>                   -> brake mode 0 or 1
+//   X                          -> stop
 //
 //==============================================================================
 
@@ -138,9 +91,9 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
     const char type = command[0];
     const std::string_view args = command.substr(1);
 
-    // Un comando autónomo en curso bloquea cualquier otra orden
+    // Autonomous state blocks all actions except stopping
     if (is_autonomous() && type != 'X') {
-        return tl::make_unexpected(CommandError::ExcecutingAutonomous);
+        return tl::make_unexpected(CommandError::ExecutingAutonomous);
     }
 
     switch (type) {
@@ -157,51 +110,48 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
 
 ControllerResponse RobotController::handle_arcade(std::string_view args) {
     int x = 0, y = 0;
-    if (!parse_two_ints(args, x, y)) {
+    if (!cmd::to_int(args, x, y)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
     if (x < -100 || x > 100 || y < -100 || y > 100) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
 
-    // Calculamos los valores objetivo para comparar con el estado actual
     const int l = clamp_power(y + x);
     const int r = clamp_power(y - x);
-    MoveParams target{l, r};
 
-    if (same_params(target, current_move_params_)) {
-        return tl::make_unexpected(CommandError::AlreadyExcecuted);
+    if (same_powers(RobotPowers(l, r), RobotPowers(params_.l_power, params_.r_power))) {
+        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     arcade_control(x, y);
-    return current_move_params_;
+    return CommandType::Arcade;
 }
 
 //==============================================================================
 
 ControllerResponse RobotController::handle_move(std::string_view args) {
     int l = 0, r = 0;
-    if (!parse_two_ints(args, l, r)) {
+    if (!cmd::to_int(args, l, r)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
     if (l < -100 || l > 100 || r < -100 || r > 100) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
 
-    MoveParams target{l, r};
-    if (same_params(target, current_move_params_)) {
-        return tl::make_unexpected(CommandError::AlreadyExcecuted);
+    if (same_powers(RobotPowers(l, r), RobotPowers(params_.l_power, params_.r_power))) {
+        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     move(l, r);
-    return current_move_params_;
+    return CommandType::Move;
 }
 
 //==============================================================================
 
 ControllerResponse RobotController::handle_square(std::string_view args) {
     int power = 0, fw_ms = 0, tn_ms = 0;
-    if (!parse_three_ints(args, power, fw_ms, tn_ms)) {
+    if (!cmd::to_int(args, power, fw_ms, tn_ms)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
     if (power < 1 || power > 100 || fw_ms <= 0 || tn_ms <= 0) {
@@ -211,8 +161,7 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
     start_square(power, static_cast<unsigned>(fw_ms),
                         static_cast<unsigned>(tn_ms));
 
-    // Devolvemos el primer estado de la rutina
-    return current_move_params_;
+    return CommandType::Square;
 }
 
 //==============================================================================
@@ -220,7 +169,7 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
 ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
     int brake_param = 0;
 
-    if (!parse_int(args, brake_param)) {
+    if (!cmd::to_int(args, brake_param)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
 
@@ -230,63 +179,61 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
 
     const auto brake_mode = static_cast<BrakeMode>(brake_param);
 
-    if (brake_mode == current_move_params_.brake_mode) {
-        return tl::make_unexpected(CommandError::AlreadyExcecuted);
+    if (brake_mode == params_.brake_mode) {
+        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     set_brake_mode(brake_mode);
 
-    return current_move_params_;
+    return CommandType::SetBrake;
 }
 
 //==============================================================================
 
 ControllerResponse RobotController::handle_stop() {
     if (is_stopped()) {
-        return tl::make_unexpected(CommandError::AlreadyExcecuted);
+        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     stop();
 
-    // Si había una rutina autónoma en curso, la cancelamos
     if (is_autonomous()) {
-        auto_state_ = AutoState::Idle;
+        params_.auto_state = AutoState::Idle;
     }
 
-    return current_move_params_;
+    return CommandType::Stop;
 }
 
 //==============================================================================
-// Rutina autónoma: cuadrado
+// Autonomous routine: square
 //==============================================================================
 
 void RobotController::start_square(int power,
                                    unsigned int forward_ms,
                                    unsigned int turn_ms)
 {
-    auto_power_         = clamp_power(power);
-    auto_forward_ms_    = forward_ms;
-    auto_turn_ms_       = turn_ms;
-    auto_side_count_    = 0;
-    auto_state_         = AutoState::Forward;
-    auto_state_start_ms_ = millis();
+    auto_power_             = clamp_power(power);
+    auto_forward_ms_        = forward_ms;
+    auto_turn_ms_           = turn_ms;
+    auto_side_count_        = 0;
+    params_.auto_state      = AutoState::Forward;
+    auto_state_start_ms_    = millis();
 
-    // Primer tramo: avanzar recto
-    move(auto_power_, auto_power_);
+    move(auto_power_, auto_power_); // first direction -> forward
 }
+
+//==============================================================================
 
 void RobotController::update_square() {
 
     const unsigned long elapsed = millis() - auto_state_start_ms_;
 
-    switch (auto_state_) {
+    switch (params_.auto_state) {
 
         case AutoState::Forward:
             if (elapsed >= auto_forward_ms_) {
-                // Cambiar a giro a la derecha: izquierda adelante,
-                // derecha atrás (giro sobre el eje)
                 move(auto_power_, -auto_power_);
-                auto_state_ = AutoState::Turn;
+                params_.auto_state = AutoState::Turn;
                 auto_state_start_ms_ = millis();
             }
             break;
@@ -297,7 +244,7 @@ void RobotController::update_square() {
                     finish_autonomous();
                 } else {
                     move(auto_power_, auto_power_);
-                    auto_state_ = AutoState::Forward;
+                    params_.auto_state = AutoState::Forward;
                     auto_state_start_ms_ = millis();
                 }
             }
@@ -309,15 +256,27 @@ void RobotController::update_square() {
     }
 }
 
+//==============================================================================
+
 void RobotController::finish_autonomous() {
     stop();
-    auto_state_ = AutoState::Idle;
+    params_.auto_state = AutoState::Idle;
     auto_side_count_ = 0;
 }
 
 //==============================================================================
 
-void RobotController::update() {
-    if (auto_state_ == AutoState::Idle) return;
+void RobotController::loop() {
+    if (params_.auto_state == AutoState::Idle) return;
     update_square();
+}
+
+//==============================================================================
+
+bool RobotController::has_same_params(const RobotParams& params) const {
+    return (params_.l_power == params.l_power &&
+            params_.r_power == params.r_power &&
+            params_.auto_state == params.auto_state &&
+            params_.brake_mode == params.brake_mode
+            );
 }
