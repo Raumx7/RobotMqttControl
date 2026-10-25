@@ -1,7 +1,8 @@
 #pragma once
+
+#include <string_view>
 #include <Arduino.h>
 #include <tl/expected.hpp>
-#include <string_view>
 
 #include "L298N.h"
 #include "types.h"
@@ -66,6 +67,7 @@ private:
     L298N& motors_left_;
     L298N& motors_right_;
 
+    // Robot parameters
     RobotParams params_{};
 
     // Autonomous

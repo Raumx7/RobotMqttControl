@@ -10,7 +10,7 @@ namespace {
 }
 
 //==============================================================================
-// Constructores
+// Constructors
 //==============================================================================
 
 L298N::L298N(uint8_t in1, uint8_t in2, uint8_t ena, uint32_t pwm_frec_hz)
@@ -37,7 +37,7 @@ pwm_frec_hz_(0)
 
 //==============================================================================
 
-void L298N::init()
+void L298N::begin()
 {
     pinMode(in1_, OUTPUT);
     pinMode(in2_, OUTPUT);
@@ -86,7 +86,7 @@ void L298N::brake()
 
 //==============================================================================
 
-void L298N::set_reversed(bool reversed)
+void L298N::reversed(bool reversed)
 {
     reversed_ = reversed;
     update_outputs();
@@ -96,7 +96,7 @@ void L298N::set_reversed(bool reversed)
 
 void L298N::update_outputs()
 {
-    // ---- Caso con ENA controlado por PWM ----
+    // ---- Case with ENA controlled by PWM ----
     if (has_ena_)
     {
         if (braking_)
@@ -111,12 +111,12 @@ void L298N::update_outputs()
 
         if (effective_speed == 0)
         {
-            // Coast: puente deshabilitado por completo desde ENA.
+            // Coast: bridge fully disabled through ENA.
             ledcWrite(ena_, 0);
             return;
         }
 
-        const uint8_t level = static_cast<uint8_t>(
+        const auto level = static_cast<uint8_t>(
             (abs(effective_speed) * 255) / 100);
 
         if (effective_speed > 0)
@@ -134,7 +134,7 @@ void L298N::update_outputs()
         return;
     }
 
-    // ---- Caso con ENA puenteado a nivel alto (solo ON/OFF) ----
+    // ---- Case with ENA tied to logic high (ON/OFF only) ----
     if (braking_)
     {
         digitalWrite(in1_, HIGH);
@@ -146,14 +146,14 @@ void L298N::update_outputs()
 
     if (effective_speed == 0)
     {
-        // Coast: con ENA fijo en alto, el "coast" se logra apagando
-        // ambas entradas. El motor queda flotando.
+        // Coast: with ENA fixed high, coast is achieved by turning off
+        // both inputs. The motor is left floating.
         digitalWrite(in1_, LOW);
         digitalWrite(in2_, LOW);
         return;
     }
 
-    // Cualquier valor distinto de 0 => full speed.
+    // Any non-zero value => full speed.
     if (effective_speed > 0)
     {
         digitalWrite(in1_, HIGH);

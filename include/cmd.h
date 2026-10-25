@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string_view>
 #include <cstddef>
 #include <charconv>
@@ -35,7 +36,7 @@ namespace cmd {
     bool to_int(std::string_view args, Args&... variables) noexcept {
         constexpr std::size_t N = sizeof...(Args);
 
-        int temp[N]; // Buffer en el stack (válido y de costo cero en runtime)
+        int temp[N]; // Valid stack buffer
         if (!detail::parse_ints(args, temp, N)) {
             return false;
         }

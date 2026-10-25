@@ -1,61 +1,62 @@
 #pragma once
-#include <stdint.h>
+
+#include <cstdint>
 
 //==============================================================================
-// Driver para el puente H L298N (motor DC) adaptado a ESP32.
+// Driver for the L298N H-bridge (DC motor), adapted for ESP32.
 //
-// El L298N separa dirección (IN1/IN2, digitales) de magnitud (ENA, PWM).
-// En ESP32 se usa el periférico LEDC para generar el PWM en ENA, ya que
-// analogWrite() no existe de forma nativa (Arduino lo emula de forma pobre).
+// The L298N separates direction (IN1/IN2, digital) from magnitude (ENA, PWM).
+// On ESP32 the LEDC peripheral is used to generate the PWM on ENA, since
+// analogWrite() does not exist natively (Arduino emulates it poorly).
 //
-// NOTA: si ENA está puenteado físicamente a 5V (jumper), usa el constructor
-//       de 2 pines. La magnitud se controlará solo por IN1/IN2 (ON/OFF).
+// NOTE: if ENA is physically tied to 5V (jumper), use the 2-pin constructor.
+//       Magnitude will then be controlled only through IN1/IN2 (ON/OFF).
 //==============================================================================
 class L298N
 {
 public:
 
-    /// Constructor completo: control de dirección + magnitud (PWM en ENA).
-    /// @param in1 Pin digital IN1.
-    /// @param in2 Pin digital IN2.
-    /// @param ena Pin PWM conectado a ENA.
-    /// @param pwm_frec_hz Frecuencia deseada de PWM para ENA (por defecto 3 kHz).
+    /// Full constructor: direction control + magnitude (PWM on ENA).
+    /// @param in1 Digital pin IN1.
+    /// @param in2 Digital pin IN2.
+    /// @param ena PWM pin connected to ENA.
+    /// @param pwm_frec_hz Desired PWM frequency for ENA (default 3 kHz).
     L298N(
     uint8_t in1,
     uint8_t in2,
     uint8_t ena,
     uint32_t pwm_frec_hz = 3000);
 
-    /// Constructor reducido: ENA puenteado físicamente a nivel alto.
-    /// La velocidad solo puede ser 0 (coast/brake) o ±100 (full).
-    /// @param in1 Pin digital IN1.
-    /// @param in2 Pin digital IN2.
+    /// Reduced constructor: ENA physically tied to logic high.
+    /// Speed can only be 0 (coast/brake) or ±100 (full).
+    /// @param in1 Digital pin IN1.
+    /// @param in2 Digital pin IN2.
     L298N(
         uint8_t in1,
         uint8_t in2);
 
-    /// Configura los pines y deja el motor en coast.
-    void init();
+    /// Configures the pins and leaves the motor in coast.
+    void begin();
 
-    /// Fija la velocidad, en el rango -100..100 (se clampa).
-    /// Si ENA está puenteado (constructor de 2 pines), cualquier valor
-    /// distinto de 0 se trata como ±100.
+    /// Sets the speed in the range -100..100 (clamped).
+    /// If ENA is tied high (2-pin constructor), any non-zero value
+    /// is treated as ±100.
     void set_speed(int speed);
 
-    /// Última velocidad pedida con set_speed().
-    int get_speed() const;
+    /// Last speed requested with set_speed().
+    [[nodiscard]] int get_speed() const;
 
-    /// true si el motor no está siendo impulsado ahora mismo.
-    bool is_stopped() const { return speed_ == 0; }
+    /// true if the motor is not being driven right now.
+    [[nodiscard]] bool is_stopped() const { return speed_ == 0; }
 
-    /// Motor en coast: sin torque, gira libre por inercia.
+    /// Coast: no torque, the motor spins freely by inertia.
     void stop();
 
-    /// Frenado activo: IN1 e IN2 al mismo nivel (cortocircuito controlado).
+    /// Active braking: IN1 and IN2 at the same level (controlled short circuit).
     void brake();
 
-    /// Invierte el sentido de giro.
-    void set_reversed(bool reversed = true);
+    /// Reverses the rotation direction.
+    void reversed(bool reversed = true);
 
 private:
 
@@ -66,8 +67,8 @@ private:
     uint8_t in1_;
     uint8_t in2_;
 
-    // Si has_ena_ es false, el jumper físico mantiene ENA activo
-    // y el motor solo puede ir a full o a cero.
+    // If has_ena_ is false, the physical jumper keeps ENA enabled
+    // and the motor can only run at full speed or zero.
     bool has_ena_;
     uint8_t ena_;
     uint32_t pwm_frec_hz_;

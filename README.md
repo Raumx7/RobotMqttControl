@@ -4,7 +4,8 @@ Robot C++/Arduino-Framework codes to handle mqtt comunication and events control
 ## Library dependencies
 
 [knolleary/PubSubClient](https://github.com/knolleary/pubsubclient.git) v2.1  
-[TartanLlama/expected](https://github.com/TartanLlama/expected.git)     v1.3.1
+[jobitjoseph/SimpleOLED](https://github.com/jobitjoseph/SimpleOLED) v1.0.0  
+[TartanLlama/expected](https://github.com/TartanLlama/expected.git) v1.3.1
 
 ## Compile flags
 
