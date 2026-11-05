@@ -44,6 +44,9 @@ public:
     // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);
 
+    // Método para iniciar la rutina térmica autónoma
+    void start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms);
+
     // Must be called in the main loop so it does not block other actions
     void loop();
 
@@ -55,12 +58,14 @@ private:
     ControllerResponse handle_arcade(std::string_view args);
     ControllerResponse handle_move(std::string_view args);
     ControllerResponse handle_square(std::string_view args);
+    ControllerResponse handle_rectangle_scan(std::string_view args);
     ControllerResponse handle_brake_mode(std::string_view args);
     ControllerResponse handle_stop();
 
     // Autonomous routine functions
     void start_square(int power, unsigned int forward_ms, unsigned int turn_ms);
     void update_square();
+    void update_rectangle_scan(); // <-- NUEVO EN AUTONOMOUS ROUTINE FUNCTIONS
     void finish_autonomous();
 
     // Motor groups
@@ -74,6 +79,10 @@ private:
     unsigned long auto_state_start_ms_ = 0;
     unsigned int auto_forward_ms_ = 0;
     unsigned int auto_turn_ms_ = 0;
+    unsigned int auto_fw_long_ms_  = 0; // Lado largo
+    unsigned int auto_fw_short_ms_ = 0; // Lado corto
+    unsigned int auto_wait_ms_ = 5000;
     int auto_power_ = 0;
     uint8_t auto_side_count_ = 0;
+    int scan_step_ = 0;             
 };

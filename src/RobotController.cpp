@@ -77,6 +77,7 @@ void RobotController::update_motor_powers(int l_power, int r_power) {
 //   A <x> <y>                  -> arcade (joystick), x,y on [-100,100]
 //   M <l> <r>                  -> direct move, l,r on [-100,100]
 //   S <power> <fw_ms> <tn_ms>  -> autonomous square routine, power on [1,100], ms > 0
+//   R <power> <fw_long_ms> <fw_short_ms> <wait_ms> <turn_ms> -> autonomous thermal rectangle scan, power on
 //   B <bkmd>                   -> brake mode 0 or 1
 //   X                          -> stop
 //
@@ -91,7 +92,6 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
     const char type = command[0];
     const std::string_view args = command.substr(1);
 
-    // Autonomous state blocks all actions except stopping
     if (is_autonomous() && type != 'X') {
         return tl::make_unexpected(CommandError::ExecutingAutonomous);
     }
@@ -100,6 +100,7 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
         case 'A': return handle_arcade(args);
         case 'M': return handle_move(args);
         case 'S': return handle_square(args);
+        case 'R': return handle_rectangle_scan(args);
         case 'B': return handle_brake_mode(args);
         case 'X': return handle_stop();
         default:  return tl::make_unexpected(CommandError::Unknown);
@@ -166,6 +167,26 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
 
 //==============================================================================
 
+ControllerResponse RobotController::handle_rectangle_scan(std::string_view args) {
+    int power = 0, fw_long_ms = 0, fw_short_ms = 0, wait_ms = 0, tn_ms = 0;
+    if (!cmd::to_int(args, power, fw_long_ms, fw_short_ms, wait_ms, tn_ms)) {
+        return tl::make_unexpected(CommandError::InvalidArgument);
+    }
+    if (power < 1 || power > 100 || fw_long_ms <= 0 || fw_short_ms <= 0 || wait_ms <= 0 || tn_ms <= 0) {
+        return tl::make_unexpected(CommandError::InvalidArgument);
+    }
+
+    start_rectangle_scan(power, 
+                         static_cast<unsigned>(fw_long_ms),
+                         static_cast<unsigned>(fw_short_ms),
+                         static_cast<unsigned>(wait_ms),
+                         static_cast<unsigned>(tn_ms));
+
+    return CommandType::RectangleScan;
+}
+
+//==============================================================================
+
 ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
     int brake_param = 0;
 
@@ -191,15 +212,10 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
 //==============================================================================
 
 ControllerResponse RobotController::handle_stop() {
-    if (is_stopped()) {
-        return tl::make_unexpected(CommandError::AlreadyExecuted);
-    }
-
     stop();
-
-    if (is_autonomous()) {
-        params_.auto_state = AutoState::Idle;
-    }
+    params_.auto_state = AutoState::Idle;
+    scan_step_ = 0;
+    auto_side_count_ = 0;
 
     return CommandType::Stop;
 }
@@ -219,10 +235,8 @@ void RobotController::start_square(int power,
     params_.auto_state      = AutoState::Forward;
     auto_state_start_ms_    = millis();
 
-    move(auto_power_, auto_power_); // first direction -> forward
+    move(auto_power_, auto_power_);
 }
-
-//==============================================================================
 
 void RobotController::update_square() {
 
@@ -257,6 +271,155 @@ void RobotController::update_square() {
 }
 
 //==============================================================================
+// Autonomous routine: thermal rectangle scan
+//==============================================================================
+
+void RobotController::start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms) {
+    auto_power_          = clamp_power(power);
+    auto_fw_long_ms_     = fw_long_ms;
+    auto_fw_short_ms_    = fw_short_ms;
+    auto_wait_ms_        = wait_ms;
+    auto_turn_ms_        = turn_ms;
+    scan_step_           = 0;
+    params_.auto_state   = AutoState::RectangleScan;
+    auto_state_start_ms_ = millis();
+
+    move(auto_power_, auto_power_);
+}
+
+void RobotController::update_rectangle_scan() {
+    const unsigned long elapsed = millis() - auto_state_start_ms_;
+
+    switch (scan_step_) {
+        // ==========================================
+        // LADO 1: LARGO (Ida)
+        // ==========================================
+        case 0: case 2: case 4: // Avances lado largo
+            if (elapsed >= auto_fw_long_ms_) {
+                stop();
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 1: case 3: case 5: // Pausas de medición (5s)
+            if (elapsed >= auto_wait_ms_) {
+                if (scan_step_ == 5) {
+                    move(auto_power_, -auto_power_); // Preparar Giro 1
+                } else {
+                    move(auto_power_, auto_power_);
+                }
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 6: // GIRO 1 (90° a la derecha)
+            if (elapsed >= auto_turn_ms_) {
+                move(auto_power_, auto_power_);
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        // ==========================================
+        // LADO 2: CORTO
+        // ==========================================
+        case 7: case 9: case 11: // Avances lado corto
+            if (elapsed >= auto_fw_short_ms_) {
+                stop();
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 8: case 10: case 12: // Pausas de medición (5s)
+            if (elapsed >= auto_wait_ms_) {
+                if (scan_step_ == 12) {
+                    move(auto_power_, -auto_power_); // Preparar Giro 2
+                } else {
+                    move(auto_power_, auto_power_);
+                }
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 13: // GIRO 2 (90° a la derecha)
+            if (elapsed >= auto_turn_ms_) {
+                move(auto_power_, auto_power_);
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        // ==========================================
+        // LADO 3: LARGO (Regreso paralelo al Lado 1)
+        // ==========================================
+        case 14: case 16: case 18: // Avances lado largo
+            if (elapsed >= auto_fw_long_ms_) {
+                stop();
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 15: case 17: case 19: // Pausas de medición (5s)
+            if (elapsed >= auto_wait_ms_) {
+                if (scan_step_ == 19) {
+                    move(auto_power_, -auto_power_); // Preparar Giro 3
+                } else {
+                    move(auto_power_, auto_power_);
+                }
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 20: // GIRO 3 (90° a la derecha)
+            if (elapsed >= auto_turn_ms_) {
+                move(auto_power_, auto_power_);
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        // ==========================================
+        // LADO 4: CORTO (Cierre hacia punto inicial)
+        // ==========================================
+        case 21: case 23: case 25: // Avances lado corto
+            if (elapsed >= auto_fw_short_ms_) {
+                stop();
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 22: case 24: case 26: // Pausas de medición (5s)
+            if (elapsed >= auto_wait_ms_) {
+                if (scan_step_ == 26) {
+                    move(auto_power_, -auto_power_); // Preparar Giro 4 final
+                } else {
+                    move(auto_power_, auto_power_);
+                }
+                scan_step_++;
+                auto_state_start_ms_ = millis();
+            }
+            break;
+
+        case 27: // GIRO 4 (Alineación con orientación original)
+            if (elapsed >= auto_turn_ms_) {
+                finish_autonomous();
+            }
+            break;
+
+        default:
+            finish_autonomous();
+            break;
+    }
+}
+
+//==============================================================================
 
 void RobotController::finish_autonomous() {
     stop();
@@ -268,7 +431,12 @@ void RobotController::finish_autonomous() {
 
 void RobotController::loop() {
     if (params_.auto_state == AutoState::Idle) return;
-    update_square();
+
+    if (params_.auto_state == AutoState::RectangleScan) {
+        update_rectangle_scan();
+    } else {
+        update_square();
+    }
 }
 
 //==============================================================================

@@ -8,7 +8,8 @@ enum class CommandType : uint8_t {
     Move,
     Square,
     SetBrake,
-    Stop
+    Stop,
+    RectangleScan
 };
 
 // Command errors depending on message recieved or robot state
@@ -23,7 +24,8 @@ enum class CommandError : uint8_t {
 enum class AutoState : uint8_t {
     Idle,
     Forward,
-    Turn
+    Turn,
+    RectangleScan
 };
 
 // Drivetrain brake mode

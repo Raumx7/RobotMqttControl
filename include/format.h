@@ -11,7 +11,7 @@ constexpr uint8_t FONT_HEIGH = 8;   // 7 + 1 spacing
 constexpr uint8_t MAX_COL = 128 / FONT_WIDTH;   // max col: 128 / 6 = 21
 constexpr uint8_t MAX_ROW = 64 / FONT_HEIGH;    // max row: 64 / 8 = 8
 
-// Pixels to row number in range: [0, MAX_ROW]
+// Pixels to row number in range: [0, MAX_ROW - 1]
 inline constexpr uint8_t ROW[] {
     0 * FONT_HEIGH,
     1 * FONT_HEIGH,
@@ -23,7 +23,7 @@ inline constexpr uint8_t ROW[] {
     7 * FONT_HEIGH
 };
 
-// Pixels to column number in range: [0, MAX_COL]
+// Pixels to column number in range: [0, MAX_COL - 1]
 inline constexpr uint8_t COL[] {
     0 * FONT_WIDTH,
     1 * FONT_WIDTH,
@@ -62,7 +62,8 @@ namespace fmt {
             "move",
             "square",
             "set_brake",
-            "stop"
+            "stop",
+            "rectangle_scan"
         };
 
         inline constexpr const char* CmdErrStr[] {

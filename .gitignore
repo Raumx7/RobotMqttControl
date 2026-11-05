@@ -1,6 +1,2 @@
 .pio
-.idea
-lib
-test
-compile_commands.json
-platformio.ini
+.vscode
