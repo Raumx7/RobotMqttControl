@@ -1,2 +1,6 @@
 .pio
+.idea
 .vscode
+lib
+test
+compile_commands.json
