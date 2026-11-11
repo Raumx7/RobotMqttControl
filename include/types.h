@@ -44,6 +44,9 @@ struct RobotParams {
 
 // Used to handle sensor data
 struct SensorData {
+    uint8_t idx_uba   = 0;
+    uint16_t tvoc     = 0;
+    uint16_t eco2     = 0;
     float temperature = 0.0f;
     float humidity    = 0.0f;
 };

@@ -44,7 +44,7 @@ public:
     // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);
 
-    // Método para iniciar la rutina térmica autónoma
+    // Makes the scanning autonomous routine
     void start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms);
 
     // Must be called in the main loop so it does not block other actions
@@ -65,7 +65,7 @@ private:
     // Autonomous routine functions
     void start_square(int power, unsigned int forward_ms, unsigned int turn_ms);
     void update_square();
-    void update_rectangle_scan(); // <-- NUEVO EN AUTONOMOUS ROUTINE FUNCTIONS
+    void update_rectangle_scan();
     void finish_autonomous();
 
     // Motor groups
@@ -76,13 +76,13 @@ private:
     RobotParams params_{};
 
     // Autonomous
-    unsigned long auto_state_start_ms_ = 0;
-    unsigned int auto_forward_ms_ = 0;
-    unsigned int auto_turn_ms_ = 0;
-    unsigned int auto_fw_long_ms_  = 0; // Lado largo
-    unsigned int auto_fw_short_ms_ = 0; // Lado corto
-    unsigned int auto_wait_ms_ = 5000;
-    int auto_power_ = 0;
-    uint8_t auto_side_count_ = 0;
-    int scan_step_ = 0;             
+    unsigned long auto_state_start_ms_ = 0; // time ms when the robot starts autonomous
+    unsigned int auto_forward_ms_ = 0;      // time ms to move the robot forward
+    unsigned int auto_turn_ms_ = 0;         // time ms to turn the robot
+    unsigned int auto_fw_long_ms_  = 0;     // time ms to go forward (rectangle lenght)
+    unsigned int auto_fw_short_ms_ = 0;     // time ms to go forward (rectangle hight)
+    unsigned int auto_wait_ms_ = 5000;      // time ms to wait and take samples
+    int auto_power_ = 0;                    // motor powers for the autonomous routines
+    uint8_t auto_side_count_ = 0;           // number of turns (square or rectangle corners)
+    int scan_step_ = 0;                     // prepares next robot movement
 };

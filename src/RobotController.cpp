@@ -212,10 +212,17 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
 //==============================================================================
 
 ControllerResponse RobotController::handle_stop() {
+    if (is_stopped()) {
+        return tl::make_unexpected(CommandError::AlreadyExecuted);
+    }
+
     stop();
-    params_.auto_state = AutoState::Idle;
-    scan_step_ = 0;
-    auto_side_count_ = 0;
+
+    if (is_autonomous()) {
+        params_.auto_state = AutoState::Idle;
+        scan_step_ = 0;
+        auto_side_count_ = 0;
+    }
 
     return CommandType::Stop;
 }

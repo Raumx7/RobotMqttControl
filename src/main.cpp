@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Wire.h>
+
 #include <PubSubClient.h>
 #include <SimpleOLED.h>
+#include <ScioSense_ENS16x.h>
 
 #include "RobotController.h"
 #include "AHT10_Light.h"
@@ -14,7 +16,7 @@ constexpr auto PASS = "Teclab2026";
 constexpr unsigned long CONNECTION_TIME_OUT = 10'000;
 
 // --- MQTT ---
-constexpr auto BROKER = "10.121.119.14";
+constexpr auto BROKER = "10.55.248.14";
 constexpr uint16_t PORT = 1883;
 constexpr auto SUB_TOPIC = "robot/command";
 constexpr auto PUB_TOPIC_RESP = "robot/response";
@@ -44,7 +46,8 @@ RobotController robot(motors_l, motors_r);
 SimpleOLED oled;
 
 // --- Sensors ---
-AHT10_Light aht;
+AHT10_Light aht10;
+ENS160 ens160;
 
 // --- Sensor Data ---
 SensorData sensor_data{};
@@ -52,17 +55,16 @@ SensorData sensor_data{};
 void send_json_status() {
     static RobotParams last_params{};
     static unsigned long last_send = 0;
-    static bool has_published = false;
 
     const RobotParams current = robot.get_params();
 
-    const bool changed = !has_published || !robot.has_same_params(last_params);
+    const bool changed = !robot.has_same_params(last_params);
 
     if (!changed) {
         return;
     }
 
-    if (has_published && millis() - last_send < 500) {
+    if (millis() - last_send < 500) {
         return;
     }
 
@@ -76,33 +78,38 @@ void send_json_status() {
         fmt::to_str(current.brake_mode)
     );
 
-    if (client.publish(PUB_TOPIC_STAT, buffer)) {
-        last_params = current;
-        last_send = millis();
-        has_published = true;
-    }
+    client.publish(PUB_TOPIC_STAT, buffer);
+
+    last_params = current;
+    last_send = millis();
 }
 
 void send_json_telemetry() {
     static unsigned long last_send = 0;
-    static bool has_published = false;
 
-    if (has_published && millis() - last_send < 1000) {
+    if (millis() - last_send < 5000) {
         return;
     }
 
     char buffer[128];
 
     snprintf(buffer, sizeof(buffer),
-    R"({"sensor_id":"aht-01","temp":%.1f,"temp_unit":"C","hum":%.1f,"hum_unit":"%%"})",
-    sensor_data.temperature,
-    sensor_data.humidity
+        R"({"sensor_id":"aht10-01","temp":%.1f,"temp_unit":"C","hum":%.1f,"hum_unit":"%%"})",
+        sensor_data.temperature,
+        sensor_data.humidity
     );
     
-    if (client.publish(PUB_TOPIC_SENS, buffer)) {
-        last_send = millis();
-        has_published = true;
-    }
+    client.publish(PUB_TOPIC_SENS, buffer);
+
+    snprintf(buffer, sizeof(buffer),
+        R"({"sensor_id":"ens160-01","aqi":%u,"aqi_unit":"uba","tvoc":%u,"tvoc_unit":"ppb","eco2":%u,"eco2_unit":"ppm"})",
+        sensor_data.idx_uba,
+        sensor_data.tvoc,
+        sensor_data.eco2
+    );
+
+    client.publish(PUB_TOPIC_SENS, buffer);
+    last_send = millis();
 }
 
 void send_json_response(const ControllerResponse& response) {
@@ -152,14 +159,27 @@ void display_wifi_info() {
     oled.display();
 }
 
-void display_sensor_data() {
+void read_and_display_sensor_data() {
     static unsigned long last_sensor_read = 0;
     static unsigned long last_oled_draw = 0;
     const unsigned long now = millis();
 
+    if (ens160.update() == RESULT_OK) {
+        if (ens160.hasNewData()) {
+            sensor_data.idx_uba = ens160.getAirQualityIndex_UBA();
+            sensor_data.tvoc = ens160.getTvoc();
+            sensor_data.eco2 = ens160.getEco2();
+        }
+    }
+
     // Read sensor every 1000 ms
     if (now - last_sensor_read >= 1000) {
-        aht.read_data(sensor_data.temperature, sensor_data.humidity);
+        aht10.read_data(sensor_data.temperature, sensor_data.humidity);
+
+        const auto temp_comp = static_cast<uint16_t>((sensor_data.temperature + 273.15f) * 100.0f);
+        const auto hum_comp = static_cast<uint16_t>(sensor_data.humidity * 100.0f);
+
+        ens160.writeCompensation(temp_comp, hum_comp);
         last_sensor_read = now;
     }
 
@@ -175,11 +195,20 @@ void display_sensor_data() {
 
         char buffer[32];
 
-        oled.setCursor(COL[0], ROW[4]);
+        oled.setCursor(COL[0], ROW[3]);
         snprintf(buffer, sizeof(buffer), "Temperature: %.1f C", sensor_data.temperature);
         oled.println(buffer);
 
         snprintf(buffer, sizeof(buffer), "Humidity: %.1f %%", sensor_data.humidity);
+        oled.println(buffer);
+
+        snprintf(buffer, sizeof(buffer), "IDX UBA: %u", sensor_data.idx_uba);
+        oled.println(buffer);
+
+        snprintf(buffer, sizeof(buffer), "TVOC: %u ppb", sensor_data.tvoc);
+        oled.println(buffer);
+
+        snprintf(buffer, sizeof(buffer), "ECO2: %u ppm", sensor_data.eco2);
         oled.print(buffer);
 
         oled.display();
@@ -198,7 +227,7 @@ void update_data() {
             showing_sensor = true;
         }
     } else {
-        display_sensor_data();  // Shows and updates sensor data on the OLED (5s)
+        read_and_display_sensor_data();  // Shows and updates sensor data on the OLED (5s)
 
         if (now - last_mode_switch >= 5000) {
             last_mode_switch = now;
@@ -263,8 +292,19 @@ void reconnect() {
 }
 
 void setup() {
+
+    // I2C buses
+    TwoWire& I2C_0 = Wire;
+    TwoWire& I2C_1 = Wire1;
+
+    I2C_0.begin(21, 22);    // AHT10, OLED and VL530X (front)
+    I2C_1.begin(18, 19);    // ENS160 and VL530X (back)
+
     oled.begin();
-    aht.begin();
+    aht10.begin();
+    ens160.begin(&I2C_1, 0x53);
+    ens160.init();
+    ens160.startStandardMeasure();
 
     motors_l.begin();
     motors_r.begin();
