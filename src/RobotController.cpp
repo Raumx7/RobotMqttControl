@@ -212,18 +212,20 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
 //==============================================================================
 
 ControllerResponse RobotController::handle_stop() {
+    if (is_autonomous()) {
+        params_.auto_state = AutoState::Idle;
+        scan_step_ = 0;
+        auto_side_count_ = 0;
+
+        stop();
+        return CommandType::Stop;
+    }
+
     if (is_stopped()) {
         return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     stop();
-
-    if (is_autonomous()) {
-        params_.auto_state = AutoState::Idle;
-        scan_step_ = 0;
-        auto_side_count_ = 0;
-    }
-
     return CommandType::Stop;
 }
 
@@ -281,7 +283,12 @@ void RobotController::update_square() {
 // Autonomous routine: thermal rectangle scan
 //==============================================================================
 
-void RobotController::start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms) {
+void RobotController::start_rectangle_scan(int power,
+                                            unsigned int fw_long_ms,
+                                            unsigned int fw_short_ms,
+                                            unsigned int wait_ms,
+                                            unsigned int turn_ms)
+{
     auto_power_          = clamp_power(power);
     auto_fw_long_ms_     = fw_long_ms;
     auto_fw_short_ms_    = fw_short_ms;

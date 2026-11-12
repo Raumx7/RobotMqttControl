@@ -44,10 +44,7 @@ public:
     // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);
 
-    // Makes the scanning autonomous routine
-    void start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms);
-
-    // Must be called in the main loop so it does not block other actions
+    // Must be called in the main loop to update autonomous routines
     void loop();
 
 private:
@@ -64,6 +61,7 @@ private:
 
     // Autonomous routine functions
     void start_square(int power, unsigned int forward_ms, unsigned int turn_ms);
+    void start_rectangle_scan(int power, unsigned int fw_long_ms, unsigned int fw_short_ms, unsigned int wait_ms, unsigned int turn_ms);
     void update_square();
     void update_rectangle_scan();
     void finish_autonomous();
