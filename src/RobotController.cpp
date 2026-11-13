@@ -14,6 +14,17 @@ namespace {
         return v;
     }
 
+    float clamp_distance_values(float distance) {
+        if (distance >= 100.0f) return 100.0f;
+        if (distance >= 80.0f && distance < 100.0f) return 80.0f;
+        if (distance >= 50.0f && distance < 80.0f) return 50.0f;
+        if (distance >= 30.0f && distance < 50.0f) return 30.0f;
+        if (distance >= 20.0f && distance < 30.0f) return 20.0f;
+        if (distance >= 10.0f && distance < 20.0f) return 10.0f;
+        if (distance >= 5.0f && distance < 10.0f) return 10.0f;
+        return 0.0f;
+    }
+
     bool same_powers(const RobotPowers& a, const RobotPowers& b) {
         return a.l_power == b.l_power && a.r_power == b.r_power;
     }
@@ -22,8 +33,8 @@ namespace {
 
 //==============================================================================
 
-RobotController::RobotController(L298N& motors_left, L298N& motors_right)
-    : motors_left_(motors_left), motors_right_(motors_right)
+RobotController::RobotController(DistanceScanner& distance_scanner, L298N& motors_left, L298N& motors_right)
+    : distance_scanner_(distance_scanner), motors_left_(motors_left), motors_right_(motors_right)
 {
 }
 
@@ -67,6 +78,13 @@ void RobotController::stop() {
 void RobotController::update_motor_powers(int l_power, int r_power) {
     params_.l_power = l_power;
     params_.r_power = r_power;
+}
+
+void RobotController::update_distance_values() {
+    const float* distances = distance_scanner_.get_distances();
+
+    params_.ft_distance = clamp_distance_values(distances[0]);
+    params_.bk_distance = clamp_distance_values(distances[1]);
 }
 
 //==============================================================================
@@ -213,11 +231,7 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
 
 ControllerResponse RobotController::handle_stop() {
     if (is_autonomous()) {
-        params_.auto_state = AutoState::Idle;
-        scan_step_ = 0;
-        auto_side_count_ = 0;
-
-        stop();
+        finish_autonomous();
         return CommandType::Stop;
     }
 
@@ -438,12 +452,26 @@ void RobotController::update_rectangle_scan() {
 void RobotController::finish_autonomous() {
     stop();
     params_.auto_state = AutoState::Idle;
+    scan_step_ = 0;
     auto_side_count_ = 0;
 }
 
 //==============================================================================
 
 void RobotController::loop() {
+    if (distance_scanner_.update()) {
+        update_distance_values();
+    }
+
+    if (distance_scanner_.detects_collision()) {
+        if (is_autonomous()) {
+            finish_autonomous();
+        } else {
+            stop();
+        }
+        return;
+    }
+
     if (params_.auto_state == AutoState::Idle) return;
 
     if (params_.auto_state == AutoState::RectangleScan) {
@@ -458,6 +486,8 @@ void RobotController::loop() {
 bool RobotController::has_same_params(const RobotParams& params) const {
     return (params_.l_power == params.l_power &&
             params_.r_power == params.r_power &&
+            params_.ft_distance == params.ft_distance &&
+            params_.bk_distance == params.bk_distance &&
             params_.auto_state == params.auto_state &&
             params_.brake_mode == params.brake_mode
             );

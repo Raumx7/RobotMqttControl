@@ -38,6 +38,8 @@ enum class BrakeMode : uint8_t {
 struct RobotParams {
     int l_power = 0;
     int r_power = 0;
+    float ft_distance = 0.0f;
+    float bk_distance = 0.0f;
     AutoState auto_state = AutoState::Idle;
     BrakeMode brake_mode = BrakeMode::Coast;
 };

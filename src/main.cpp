@@ -16,7 +16,7 @@ constexpr auto PASS = "Teclab2026";
 constexpr unsigned long CONNECTION_TIME_OUT = 10'000;
 
 // --- MQTT ---
-constexpr auto BROKER = "10.55.248.14";
+constexpr auto BROKER = "10.103.171.14";
 constexpr uint16_t PORT = 1883;
 constexpr auto SUB_TOPIC = "robot/command";
 constexpr auto PUB_TOPIC_RESP = "robot/response";
@@ -39,8 +39,15 @@ constexpr uint8_t ENA2 = 27;
 L298N motors_l(IN1, IN2, ENA1);
 L298N motors_r(IN3, IN4, ENA2);
 
+// --- Distance Sensors
+VL53L0X sensor_ft;
+VL53L0X sensor_bk;
+
+// --- Distance Handler
+DistanceScanner distance_scanner(sensor_ft, sensor_bk);
+
 // --- Robot cmd handler ---
-RobotController robot(motors_l, motors_r);
+RobotController robot(distance_scanner, motors_l, motors_r);
 
 // --- OLED ---
 SimpleOLED oled;
@@ -71,9 +78,11 @@ void send_json_status() {
     char buffer[128];
 
     snprintf(buffer, sizeof(buffer),
-        R"({"left":%d,"right":%d,"mode":"%s","brake_mode":"%s"})",
+        R"({"left":%d,"right":%d,"front":%.1f,"back":%.1f,"mode":"%s","brake_mode":"%s"})",
         current.l_power,
         current.r_power,
+        current.ft_distance,
+        current.bk_distance,
         fmt::to_str(current.auto_state),
         fmt::to_str(current.brake_mode)
     );
@@ -305,6 +314,21 @@ void setup() {
     ens160.begin(&I2C_1, 0x53);
     ens160.init();
     ens160.startStandardMeasure();
+
+    sensor_ft.setBus(&I2C_0);
+    sensor_bk.setBus(&I2C_1);
+
+    sensor_ft.init();
+    sensor_bk.init();
+
+    sensor_ft.setTimeout(10);
+    sensor_bk.setTimeout(10);
+
+    sensor_ft.startContinuous(200);
+    sensor_bk.startContinuous(200);
+
+    distance_scanner.set_offsets(4.5, 2.5);
+    distance_scanner.set_collision_limit(5.0f);
 
     motors_l.begin();
     motors_r.begin();

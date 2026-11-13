@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <tl/expected.hpp>
 
+#include "DistanceScanner.h"
 #include "L298N.h"
 #include "types.h"
 
@@ -12,7 +13,7 @@ using ControllerResponse = tl::expected<CommandType, CommandError>;
 class RobotController {
 public:
     // Constructor
-    RobotController(L298N& motors_left, L298N& motors_right);
+    RobotController(DistanceScanner& distance_scanner, L298N& motors_left, L298N& motors_right);
 
     // Set brake mode
     void set_brake_mode(BrakeMode brake_mode) { params_.brake_mode = brake_mode; }
@@ -50,6 +51,7 @@ public:
 private:
     // Intern Helper
     void update_motor_powers(int l_power, int r_power);
+    void update_distance_values();
 
     // Parse commands
     ControllerResponse handle_arcade(std::string_view args);
@@ -65,6 +67,9 @@ private:
     void update_square();
     void update_rectangle_scan();
     void finish_autonomous();
+
+    // Distance sensors handler
+    DistanceScanner& distance_scanner_;
 
     // Motor groups
     L298N& motors_left_;
