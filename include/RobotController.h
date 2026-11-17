@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string_view>
+
 #include <Arduino.h>
 #include <tl/expected.hpp>
 
@@ -30,11 +31,17 @@ public:
     // Get brake mode
     [[nodiscard]] BrakeMode get_brake_mode() const { return params_.brake_mode; }
 
+    // True when autonomous routine is running
+    [[nodiscard]] bool is_autonomous() const { return params_.auto_state != AutoState::Idle; }
+
     // True when both motor groups are stopped
     [[nodiscard]] bool is_stopped() const { return motors_left_.is_stopped() && motors_right_.is_stopped(); }
 
-    // True when autonomous routine is running
-    [[nodiscard]] bool is_autonomous() const { return params_.auto_state != AutoState::Idle; }
+    // True when one or both motor groups are moving backward
+    [[nodiscard]] bool is_moving_backward() const { return params_.l_power < 0 || params_.r_power < 0; }
+
+    // True when one or both motor groups are moving forward
+    [[nodiscard]] bool is_moving_forward() const { return params_.l_power > 0 || params_.r_power > 0; }
 
     // True when current data is the same as data parameter
     [[nodiscard]] bool has_same_params(const RobotParams& params) const;
@@ -45,11 +52,11 @@ public:
     // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);
 
-    // Must be called in the main loop to update autonomous routines
+    // Must be called in the main loop to update autonomous routines and distance values
     void loop();
 
 private:
-    // Intern Helper
+    // Intern Helpers
     void update_motor_powers(int l_power, int r_power);
     void update_distance_values();
 

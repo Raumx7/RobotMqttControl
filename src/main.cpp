@@ -4,7 +4,7 @@
 
 #include <PubSubClient.h>
 #include <SimpleOLED.h>
-#include <ScioSense_ENS16x.h>
+#include <VL53L0X.h>
 
 #include "RobotController.h"
 #include "AHT10_Light.h"
@@ -39,11 +39,11 @@ constexpr uint8_t ENA2 = 27;
 L298N motors_l(IN1, IN2, ENA1);
 L298N motors_r(IN3, IN4, ENA2);
 
-// --- Distance Sensors
+// --- Distance Sensors ---
 VL53L0X sensor_ft;
 VL53L0X sensor_bk;
 
-// --- Distance Handler
+// --- Distance Handler ---
 DistanceScanner distance_scanner(sensor_ft, sensor_bk);
 
 // --- Robot cmd handler ---
@@ -52,9 +52,9 @@ RobotController robot(distance_scanner, motors_l, motors_r);
 // --- OLED ---
 SimpleOLED oled;
 
-// --- Sensors ---
+// --- Environmental Sensors ---
 AHT10_Light aht10;
-ENS160 ens160;
+// ENS160 ens160;
 
 // --- Sensor Data ---
 SensorData sensor_data{};
@@ -137,11 +137,11 @@ void send_json_response(const ControllerResponse& response) {
             fmt::to_str(response.error())
             );
     }
+
     client.publish(PUB_TOPIC_RESP, buffer);
 }
 
 void callback(char* /*topic*/, byte* payload, unsigned int length) {
-
     std::string_view cmd(reinterpret_cast<const char*>(payload), length);
 
     ControllerResponse response = robot.execute_command(cmd);   // returns command type or an error
@@ -151,7 +151,7 @@ void callback(char* /*topic*/, byte* payload, unsigned int length) {
 
 void display_wifi_info() {
     oled.clear();
-    oled.setCursor(0, 0);
+    oled.setCursor(COL[0], ROW[0]);
 
     oled.println(text::line);
     oled.println(text::wifi);
@@ -173,22 +173,9 @@ void read_and_display_sensor_data() {
     static unsigned long last_oled_draw = 0;
     const unsigned long now = millis();
 
-    if (ens160.update() == RESULT_OK) {
-        if (ens160.hasNewData()) {
-            sensor_data.idx_uba = ens160.getAirQualityIndex_UBA();
-            sensor_data.tvoc = ens160.getTvoc();
-            sensor_data.eco2 = ens160.getEco2();
-        }
-    }
-
-    // Read sensor every 1000 ms
+    // Read sensor every 1000 ms    
     if (now - last_sensor_read >= 1000) {
         aht10.read_data(sensor_data.temperature, sensor_data.humidity);
-
-        const auto temp_comp = static_cast<uint16_t>((sensor_data.temperature + 273.15f) * 100.0f);
-        const auto hum_comp = static_cast<uint16_t>(sensor_data.humidity * 100.0f);
-
-        ens160.writeCompensation(temp_comp, hum_comp);
         last_sensor_read = now;
     }
 
@@ -197,7 +184,7 @@ void read_and_display_sensor_data() {
         last_oled_draw = now;
 
         oled.clear();
-        oled.setCursor(0, 0);
+        oled.setCursor(COL[0], ROW[0]);
 
         oled.println(text::line);
         oled.println(text::data);
@@ -277,7 +264,7 @@ void reconnect() {
     robot.stop();
 
     oled.clear();
-    oled.setCursor(0, 0);
+    oled.setCursor(COL[0], ROW[0]);
 
     bool displayed = false;
 
@@ -307,13 +294,10 @@ void setup() {
     TwoWire& I2C_1 = Wire1;
 
     I2C_0.begin(21, 22);    // AHT10, OLED and VL530X (front)
-    I2C_1.begin(18, 19);    // ENS160 and VL530X (back)
+    I2C_1.begin(18, 19);    // VL530X (back)
 
     oled.begin();
     aht10.begin();
-    ens160.begin(&I2C_1, 0x53);
-    ens160.init();
-    ens160.startStandardMeasure();
 
     sensor_ft.setBus(&I2C_0);
     sensor_bk.setBus(&I2C_1);
@@ -324,11 +308,13 @@ void setup() {
     sensor_ft.setTimeout(10);
     sensor_bk.setTimeout(10);
 
-    sensor_ft.startContinuous(200);
-    sensor_bk.startContinuous(200);
+    sensor_ft.startContinuous();
+    sensor_bk.startContinuous();
 
-    distance_scanner.set_offsets(4.5, 2.5);
-    distance_scanner.set_collision_limit(5.0f);
+    distance_scanner.set_offset_ft(8.0f);
+    distance_scanner.set_offset_bk(5.5f);
+
+    distance_scanner.set_collision_limit(10.0f);
 
     motors_l.begin();
     motors_r.begin();
@@ -352,5 +338,5 @@ void loop() {
         reconnect();
     }
     client.loop();  // check broker connection
-    robot.loop(); // updates autonomous routine
+    robot.loop(); // check for collision and update autonomous
 }

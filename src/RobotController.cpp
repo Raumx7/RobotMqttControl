@@ -2,6 +2,7 @@
 #include "cmd.h"
 
 namespace {
+    constexpr float kNoDistance = -1.0f;
 
     struct RobotPowers {
         int l_power;
@@ -14,14 +15,15 @@ namespace {
         return v;
     }
 
-    float clamp_distance_values(float distance) {
+    float clamp_distance(float distance) {
+        if (distance >= 120.0f) return 120.0f;
         if (distance >= 100.0f) return 100.0f;
-        if (distance >= 80.0f && distance < 100.0f) return 80.0f;
-        if (distance >= 50.0f && distance < 80.0f) return 50.0f;
-        if (distance >= 30.0f && distance < 50.0f) return 30.0f;
-        if (distance >= 20.0f && distance < 30.0f) return 20.0f;
-        if (distance >= 10.0f && distance < 20.0f) return 10.0f;
-        if (distance >= 5.0f && distance < 10.0f) return 10.0f;
+        if (distance >= 80.0f)  return 80.0f;
+        if (distance >= 50.0f)  return 50.0f;
+        if (distance >= 30.0f)  return 30.0f;
+        if (distance >= 20.0f)  return 20.0f;
+        if (distance >= 10.0f)  return 10.0f;
+        if (distance >= 5.0f)   return 5.0f;
         return 0.0f;
     }
 
@@ -81,10 +83,10 @@ void RobotController::update_motor_powers(int l_power, int r_power) {
 }
 
 void RobotController::update_distance_values() {
-    const float* distances = distance_scanner_.get_distances();
+    const ScanDistances distances = distance_scanner_.get_distances();
 
-    params_.ft_distance = clamp_distance_values(distances[0]);
-    params_.bk_distance = clamp_distance_values(distances[1]);
+    params_.ft_distance = distances.front_valid ? clamp_distance(distances.front) : kNoDistance;
+    params_.bk_distance = distances.back_valid ? clamp_distance(distances.back) : kNoDistance;
 }
 
 //==============================================================================
@@ -463,7 +465,12 @@ void RobotController::loop() {
         update_distance_values();
     }
 
-    if (distance_scanner_.detects_collision()) {
+    const bool collision_ft = is_moving_forward() && distance_scanner_.detects_front_collision();
+    const bool collision_bk = is_moving_backward() && distance_scanner_.detects_back_collision();
+
+    const bool collision = collision_ft || collision_bk;
+
+    if (collision) {
         if (is_autonomous()) {
             finish_autonomous();
         } else {
