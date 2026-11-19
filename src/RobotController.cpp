@@ -24,6 +24,7 @@ namespace {
         if (distance >= 20.0f)  return 20.0f;
         if (distance >= 10.0f)  return 10.0f;
         if (distance >= 5.0f)   return 5.0f;
+        if (distance >= 2.0f)   return 2.0f;
         return 0.0f;
     }
 
@@ -82,11 +83,24 @@ void RobotController::update_motor_powers(int l_power, int r_power) {
     params_.r_power = r_power;
 }
 
+//==============================================================================
+
 void RobotController::update_distance_values() {
     const ScanDistances distances = distance_scanner_.get_distances();
 
     params_.ft_distance = distances.front_valid ? clamp_distance(distances.front) : kNoDistance;
     params_.bk_distance = distances.back_valid ? clamp_distance(distances.back) : kNoDistance;
+}
+
+//==============================================================================
+
+bool RobotController::would_collide(int l_power, int r_power) const {
+    const bool will_fwd = will_move_forward(l_power, r_power);
+    const bool will_bwd  = will_move_backward(l_power, r_power);
+
+    if (will_fwd && distance_scanner_.detects_front_collision()) return true;
+    if (will_bwd && distance_scanner_.detects_back_collision()) return true;
+    return false;
 }
 
 //==============================================================================
@@ -104,7 +118,6 @@ void RobotController::update_distance_values() {
 //==============================================================================
 
 ControllerResponse RobotController::execute_command(std::string_view command) {
-
     if (command.empty()) {
         return tl::make_unexpected(CommandError::Unknown);
     }
@@ -141,6 +154,10 @@ ControllerResponse RobotController::handle_arcade(std::string_view args) {
     const int l = clamp_power(y + x);
     const int r = clamp_power(y - x);
 
+    if (would_collide(l, r)) {
+        return tl::make_unexpected(CommandError::CollisionDetected);
+    }
+
     if (same_powers(RobotPowers(l, r), RobotPowers(params_.l_power, params_.r_power))) {
         return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
@@ -164,6 +181,10 @@ ControllerResponse RobotController::handle_move(std::string_view args) {
         return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
+    if (would_collide(l, r)) {
+        return tl::make_unexpected(CommandError::CollisionDetected);
+    }
+
     move(l, r);
     return CommandType::Move;
 }
@@ -177,6 +198,10 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
     }
     if (power < 1 || power > 100 || fw_ms <= 0 || tn_ms <= 0) {
         return tl::make_unexpected(CommandError::InvalidArgument);
+    }
+
+    if (would_collide(power, power)) {
+        return tl::make_unexpected(CommandError::CollisionDetected);
     }
 
     start_square(power, static_cast<unsigned>(fw_ms),
@@ -194,6 +219,10 @@ ControllerResponse RobotController::handle_rectangle_scan(std::string_view args)
     }
     if (power < 1 || power > 100 || fw_long_ms <= 0 || fw_short_ms <= 0 || wait_ms <= 0 || tn_ms <= 0) {
         return tl::make_unexpected(CommandError::InvalidArgument);
+    }
+
+    if (would_collide(power, power)) {
+        return tl::make_unexpected(CommandError::CollisionDetected);
     }
 
     start_rectangle_scan(power, 
@@ -465,12 +494,10 @@ void RobotController::loop() {
         update_distance_values();
     }
 
-    const bool collision_ft = is_moving_forward() && distance_scanner_.detects_front_collision();
-    const bool collision_bk = is_moving_backward() && distance_scanner_.detects_back_collision();
+    collision_ft = is_moving_forward() && distance_scanner_.detects_front_collision();
+    collision_bk = is_moving_backward() && distance_scanner_.detects_back_collision();
 
-    const bool collision = collision_ft || collision_bk;
-
-    if (collision) {
+    if (has_collision()) {
         if (is_autonomous()) {
             finish_autonomous();
         } else {

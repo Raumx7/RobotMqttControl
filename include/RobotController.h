@@ -43,6 +43,9 @@ public:
     // True when one or both motor groups are moving forward
     [[nodiscard]] bool is_moving_forward() const { return params_.l_power > 0 || params_.r_power > 0; }
 
+    // True when the robot detects collision based on current direction (false when stopped)
+    [[nodiscard]] bool has_collision() const { return collision_ft || collision_bk; };
+
     // True when current data is the same as data parameter
     [[nodiscard]] bool has_same_params(const RobotParams& params) const;
 
@@ -59,6 +62,13 @@ private:
     // Intern Helpers
     void update_motor_powers(int l_power, int r_power);
     void update_distance_values();
+
+    // Evaluate the next robot movement based on motor powers
+    [[nodiscard]] static bool will_move_backward(int l_power, int r_power) { return l_power < 0 || r_power < 0; }
+    [[nodiscard]] static bool will_move_forward(int l_power, int r_power) { return l_power > 0 || r_power > 0; }
+
+    // True if the proposed command encounters an obstacle in the direction in which it would imply movement
+    [[nodiscard]] bool would_collide(int l_power, int r_power) const;
 
     // Parse commands
     ControllerResponse handle_arcade(std::string_view args);
@@ -77,6 +87,10 @@ private:
 
     // Distance sensors handler
     DistanceScanner& distance_scanner_;
+
+    // Collision status
+    bool collision_ft = false;
+    bool collision_bk = false;
 
     // Motor groups
     L298N& motors_left_;

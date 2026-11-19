@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-// Avialable robot commands
+// Available robot commands
 enum class CommandType : uint8_t {
     Arcade,
     Move,
@@ -12,12 +12,13 @@ enum class CommandType : uint8_t {
     RectangleScan
 };
 
-// Command errors depending on message recieved or robot state
+// Command errors depending on message received or robot state
 enum class CommandError : uint8_t {
-    Unknown,
     AlreadyExecuted,
+    CollisionDetected,
     ExecutingAutonomous,
-    InvalidArgument
+    InvalidArgument,
+    Unknown
 };
 
 // Autonomous machine state

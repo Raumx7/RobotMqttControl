@@ -54,7 +54,6 @@ SimpleOLED oled;
 
 // --- Environmental Sensors ---
 AHT10_Light aht10;
-// ENS160 ens160;
 
 // --- Sensor Data ---
 SensorData sensor_data{};
