@@ -1,18 +1,17 @@
 # Robot Mqtt Control
 Robot C++/Arduino-Framework codes to handle mqtt comunication and events control
 
-## Library dependencies
+## Dependencies
 
-[knolleary/PubSubClient](https://github.com/knolleary/pubsubclient.git) v2.1  
-[jobitjoseph/SimpleOLED](https://github.com/jobitjoseph/SimpleOLED) v1.0.0  
-[TartanLlama/expected](https://github.com/TartanLlama/expected.git) v1.3.1
+| Library  | Version  | Usage  |
+|---|---|---|
+|[knolleary/PubSubClient](https://github.com/knolleary/pubsubclient.git)   | v2.1 | MQTT Client  |
+|[jobitjoseph/SimpleOLED](https://github.com/jobitjoseph/SimpleOLED)   | v1.0.0 | SSD1306 driver  |
+|[pololu/vl53l0x-arduino](https://github.com/pololu/vl53l0x-arduino)   | v1.3.1  | VL53L0X driver |
+|[TartanLlama/expected](https://github.com/TartanLlama/expected.git)   | v1.3.1  | Stack exceptions  |
 
-## Compile flags
+**Note:** see platformio.ini for specific project configuration and compile settings
 
-```text
--fno-exceptions
--std=gnu++17
-```
 ## Command parser
 
 | Command   | Description                          | Parameters (range)              |
@@ -22,3 +21,13 @@ Robot C++/Arduino-Framework codes to handle mqtt comunication and events control
 | `S <power> <fw_ms> <tn_ms>` | Autonomous square routine | power ∈ [1, 100], ms > 0      |
 | `B <bkmd>`     | Brake mode                       | 0 or 1                        |
 | `X`              | Stop                             | —                               |
+
+## MQTT Topics
+
+### Subscriber Topics
+* robot/command
+
+### Publisher Topics
+* robot/response
+* robot/status
+* robot/telemetry
