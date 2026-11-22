@@ -3,7 +3,7 @@
 #include <WiFiType.h>
 #include "types.h"
 
-// OLED dimentions (128x64) with 5x7 text rendering
+// OLED dimensions (128x64) with 5x7 text rendering
 constexpr uint8_t FONT_WIDTH = 6;   // 5 + 1 spacing
 constexpr uint8_t FONT_HEIGH = 8;   // 7 + 1 spacing
 
@@ -62,14 +62,15 @@ namespace fmt {
             "move",
             "square",
             "set_brake",
-            "stop"
+            "stop",
+            "rectangle_scan"
         };
 
         inline constexpr const char* CmdErrStr[] {
-            "command_unknown",
-            "already_executed",
             "autonomous_running",
-            "invalid_argument"
+            "collision_detected",
+            "invalid_argument",
+            "command_unknown"
         };
     }
 

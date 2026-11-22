@@ -2,28 +2,30 @@
 
 #include <cstdint>
 
-// Avialable robot commands
+// Available robot commands
 enum class CommandType : uint8_t {
     Arcade,
     Move,
     Square,
     SetBrake,
-    Stop
+    Stop,
+    RectangleScan
 };
 
-// Command errors depending on message recieved or robot state
+// Command errors depending on message received or robot state
 enum class CommandError : uint8_t {
-    Unknown,
-    AlreadyExecuted,
-    ExecutingAutonomous,
-    InvalidArgument
+    AutonomousRunning,
+    CollisionDetected,
+    InvalidArgument,
+    Unknown
 };
 
 // Autonomous machine state
 enum class AutoState : uint8_t {
     Idle,
     Forward,
-    Turn
+    Turn,
+    RectangleScan
 };
 
 // Drivetrain brake mode
@@ -32,16 +34,21 @@ enum class BrakeMode : uint8_t {
     Brake
 };
 
-// Used to track robot status and validate commands
+// Used to track robot parameters/status and validate commands
 struct RobotParams {
     int l_power = 0;
     int r_power = 0;
+    float ft_distance = 0.0f;
+    float bk_distance = 0.0f;
     AutoState auto_state = AutoState::Idle;
     BrakeMode brake_mode = BrakeMode::Coast;
 };
 
 // Used to handle sensor data
 struct SensorData {
+    uint8_t idx_uba   = 0;
+    uint16_t tvoc     = 0;
+    uint16_t eco2     = 0;
     float temperature = 0.0f;
     float humidity    = 0.0f;
 };
