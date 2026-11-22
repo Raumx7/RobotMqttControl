@@ -14,9 +14,8 @@ enum class CommandType : uint8_t {
 
 // Command errors depending on message received or robot state
 enum class CommandError : uint8_t {
-    AlreadyExecuted,
+    AutonomousRunning,
     CollisionDetected,
-    ExecutingAutonomous,
     InvalidArgument,
     Unknown
 };
@@ -35,7 +34,7 @@ enum class BrakeMode : uint8_t {
     Brake
 };
 
-// Used to track robot status and validate commands
+// Used to track robot parameters/status and validate commands
 struct RobotParams {
     int l_power = 0;
     int r_power = 0;

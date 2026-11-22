@@ -16,7 +16,7 @@ constexpr auto PASS = "Teclab2026";
 constexpr unsigned long CONNECTION_TIME_OUT = 10'000;
 
 // --- MQTT ---
-constexpr auto BROKER = "10.103.171.14";
+constexpr auto BROKER = "10.179.93.14";
 constexpr uint16_t PORT = 1883;
 constexpr auto SUB_TOPIC = "robot/command";
 constexpr auto PUB_TOPIC_RESP = "robot/response";
@@ -47,7 +47,7 @@ VL53L0X sensor_bk;
 DistanceScanner distance_scanner(sensor_ft, sensor_bk);
 
 // --- Robot cmd handler ---
-RobotController robot(distance_scanner, motors_l, motors_r);
+RobotController robot(motors_l, motors_r, distance_scanner);
 
 // --- OLED ---
 SimpleOLED oled;

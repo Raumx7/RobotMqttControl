@@ -4,11 +4,6 @@
 namespace {
     constexpr float kNoDistance = -1.0f;
 
-    struct RobotPowers {
-        int l_power;
-        int r_power;
-    };
-
     int clamp_power(int v) {
         if (v > 100) return 100;
         if (v < -100) return -100;
@@ -27,17 +22,12 @@ namespace {
         if (distance >= 2.0f)   return 2.0f;
         return 0.0f;
     }
-
-    bool same_powers(const RobotPowers& a, const RobotPowers& b) {
-        return a.l_power == b.l_power && a.r_power == b.r_power;
-    }
-
 } // namespace
 
 //==============================================================================
 
-RobotController::RobotController(DistanceScanner& distance_scanner, L298N& motors_left, L298N& motors_right)
-    : distance_scanner_(distance_scanner), motors_left_(motors_left), motors_right_(motors_right)
+RobotController::RobotController(L298N& motors_left, L298N& motors_right, DistanceScanner& distance_scanner)
+    : motors_left_(motors_left), motors_right_(motors_right), distance_scanner_(distance_scanner)
 {
 }
 
@@ -126,7 +116,7 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
     const std::string_view args = command.substr(1);
 
     if (is_autonomous() && type != 'X') {
-        return tl::make_unexpected(CommandError::ExecutingAutonomous);
+        return tl::make_unexpected(CommandError::AutonomousRunning);
     }
 
     switch (type) {
@@ -144,9 +134,11 @@ ControllerResponse RobotController::execute_command(std::string_view command) {
 
 ControllerResponse RobotController::handle_arcade(std::string_view args) {
     int x = 0, y = 0;
+
     if (!cmd::to_int(args, x, y)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
+
     if (x < -100 || x > 100 || y < -100 || y > 100) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
@@ -158,11 +150,7 @@ ControllerResponse RobotController::handle_arcade(std::string_view args) {
         return tl::make_unexpected(CommandError::CollisionDetected);
     }
 
-    if (same_powers(RobotPowers(l, r), RobotPowers(params_.l_power, params_.r_power))) {
-        return tl::make_unexpected(CommandError::AlreadyExecuted);
-    }
-
-    arcade_control(x, y);
+    move(l, r);
     return CommandType::Arcade;
 }
 
@@ -170,15 +158,13 @@ ControllerResponse RobotController::handle_arcade(std::string_view args) {
 
 ControllerResponse RobotController::handle_move(std::string_view args) {
     int l = 0, r = 0;
+
     if (!cmd::to_int(args, l, r)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
+
     if (l < -100 || l > 100 || r < -100 || r > 100) {
         return tl::make_unexpected(CommandError::InvalidArgument);
-    }
-
-    if (same_powers(RobotPowers(l, r), RobotPowers(params_.l_power, params_.r_power))) {
-        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     if (would_collide(l, r)) {
@@ -193,9 +179,11 @@ ControllerResponse RobotController::handle_move(std::string_view args) {
 
 ControllerResponse RobotController::handle_square(std::string_view args) {
     int power = 0, fw_ms = 0, tn_ms = 0;
+
     if (!cmd::to_int(args, power, fw_ms, tn_ms)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
+
     if (power < 1 || power > 100 || fw_ms <= 0 || tn_ms <= 0) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
@@ -204,9 +192,7 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
         return tl::make_unexpected(CommandError::CollisionDetected);
     }
 
-    start_square(power, static_cast<unsigned>(fw_ms),
-                        static_cast<unsigned>(tn_ms));
-
+    start_square(power, static_cast<unsigned>(fw_ms), static_cast<unsigned>(tn_ms));
     return CommandType::Square;
 }
 
@@ -214,9 +200,11 @@ ControllerResponse RobotController::handle_square(std::string_view args) {
 
 ControllerResponse RobotController::handle_rectangle_scan(std::string_view args) {
     int power = 0, fw_long_ms = 0, fw_short_ms = 0, wait_ms = 0, tn_ms = 0;
+
     if (!cmd::to_int(args, power, fw_long_ms, fw_short_ms, wait_ms, tn_ms)) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
+
     if (power < 1 || power > 100 || fw_long_ms <= 0 || fw_short_ms <= 0 || wait_ms <= 0 || tn_ms <= 0) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
@@ -247,14 +235,7 @@ ControllerResponse RobotController::handle_brake_mode(std::string_view args) {
         return tl::make_unexpected(CommandError::InvalidArgument);
     }
 
-    const auto brake_mode = static_cast<BrakeMode>(brake_param);
-
-    if (brake_mode == params_.brake_mode) {
-        return tl::make_unexpected(CommandError::AlreadyExecuted);
-    }
-
-    set_brake_mode(brake_mode);
-
+    set_brake_mode(static_cast<BrakeMode>(brake_param));
     return CommandType::SetBrake;
 }
 
@@ -264,10 +245,6 @@ ControllerResponse RobotController::handle_stop() {
     if (is_autonomous()) {
         finish_autonomous();
         return CommandType::Stop;
-    }
-
-    if (is_stopped()) {
-        return tl::make_unexpected(CommandError::AlreadyExecuted);
     }
 
     stop();

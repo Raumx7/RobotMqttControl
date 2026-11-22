@@ -14,7 +14,7 @@ using ControllerResponse = tl::expected<CommandType, CommandError>;
 class RobotController {
 public:
     // Constructor
-    RobotController(DistanceScanner& distance_scanner, L298N& motors_left, L298N& motors_right);
+    RobotController(L298N& motors_left, L298N& motors_right, DistanceScanner& distance_scanner);
 
     // Set brake mode
     void set_brake_mode(BrakeMode brake_mode) { params_.brake_mode = brake_mode; }
@@ -85,19 +85,19 @@ private:
     void update_rectangle_scan();
     void finish_autonomous();
 
-    // Distance sensors handler
-    DistanceScanner& distance_scanner_;
-
-    // Collision status
-    bool collision_ft = false;
-    bool collision_bk = false;
-
     // Motor groups
     L298N& motors_left_;
     L298N& motors_right_;
 
+    // Distance sensors handler
+    DistanceScanner& distance_scanner_;
+
     // Robot parameters
     RobotParams params_{};
+
+    // Collision status
+    bool collision_ft = false;
+    bool collision_bk = false;
 
     // Autonomous
     unsigned long auto_state_start_ms_ = 0; // time ms when the robot starts autonomous

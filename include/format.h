@@ -67,9 +67,8 @@ namespace fmt {
         };
 
         inline constexpr const char* CmdErrStr[] {
-            "already_executed",
-            "collision_detected",
             "autonomous_running",
+            "collision_detected",
             "invalid_argument",
             "command_unknown"
         };
