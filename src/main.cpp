@@ -5,6 +5,7 @@
 #include <PubSubClient.h>
 #include <SimpleOLED.h>
 #include <VL53L0X.h>
+#include "SGP30.h"
 
 #include "RobotController.h"
 #include "AHT10_Light.h"
@@ -22,6 +23,10 @@ constexpr auto SUB_TOPIC = "robot/command";
 constexpr auto PUB_TOPIC_RESP = "robot/response";
 constexpr auto PUB_TOPIC_SENS = "robot/telemetry";
 constexpr auto PUB_TOPIC_STAT = "robot/status";
+
+// --- Calibracion SGP30 (12h) ---
+constexpr uint16_t SGP30_BASELINE_ECO2 = 0x8730;
+constexpr uint16_t SGP30_BASELINE_TVOC = 0x8BA3;
 
 // --- Clients ---
 WiFiClient espClient;
@@ -54,6 +59,8 @@ SimpleOLED oled;
 
 // --- Environmental Sensors ---
 AHT10_Light aht10;
+SGP30 SGP(&Wire1); // Apunta a Wire1 (pines 18 y 19)
+bool sgp_ready = false;
 
 // --- Sensor Data ---
 SensorData sensor_data{};
@@ -110,8 +117,7 @@ void send_json_telemetry() {
     client.publish(PUB_TOPIC_SENS, buffer);
 
     snprintf(buffer, sizeof(buffer),
-        R"({"sensor_id":"ens160-01","aqi":%u,"aqi_unit":"uba","tvoc":%u,"tvoc_unit":"ppb","eco2":%u,"eco2_unit":"ppm"})",
-        sensor_data.idx_uba,
+        R"({"sensor_id":"sgp30-01","tvoc":%u,"tvoc_unit":"ppb","eco2":%u,"eco2_unit":"ppm"})",
         sensor_data.tvoc,
         sensor_data.eco2
     );
@@ -170,12 +176,30 @@ void display_wifi_info() {
 void read_and_display_sensor_data() {
     static unsigned long last_sensor_read = 0;
     static unsigned long last_oled_draw = 0;
+    static unsigned long sgp_request_time = 0;
+    static bool sgp_waiting = false;
     const unsigned long now = millis();
 
-    // Read sensor every 1000 ms    
+    // 1. Iniciar lectura cada 1000 ms (sin bloquear con delay)
     if (now - last_sensor_read >= 1000) {
         aht10.read_data(sensor_data.temperature, sensor_data.humidity);
+
+        if (sgp_ready && !sgp_waiting) {
+            SGP.request();
+            sgp_request_time = now;
+            sgp_waiting = true;
+        }
+
         last_sensor_read = now;
+    }
+
+    // 2. Completar lectura del SGP30 tras 25 ms de margen
+    if (sgp_waiting && (now - sgp_request_time >= 25)) {
+        if (SGP.read()) {
+            sensor_data.tvoc = SGP.getTVOC();
+            sensor_data.eco2 = SGP.getCO2();
+        }
+        sgp_waiting = false;
     }
 
     // Refresh OLED screen every 250 ms
@@ -195,9 +219,6 @@ void read_and_display_sensor_data() {
         oled.println(buffer);
 
         snprintf(buffer, sizeof(buffer), "Humidity: %.1f %%", sensor_data.humidity);
-        oled.println(buffer);
-
-        snprintf(buffer, sizeof(buffer), "IDX UBA: %u", sensor_data.idx_uba);
         oled.println(buffer);
 
         snprintf(buffer, sizeof(buffer), "TVOC: %u ppb", sensor_data.tvoc);
@@ -293,10 +314,19 @@ void setup() {
     TwoWire& I2C_1 = Wire1;
 
     I2C_0.begin(21, 22);    // AHT10, OLED and VL530X (front)
-    I2C_1.begin(18, 19);    // VL530X (back)
+    I2C_1.begin(18, 19);    // VL530X (back) and SGP30
 
     oled.begin();
     aht10.begin();
+
+    // Inicializar SGP30 en I2C_1 (pines 18 y 19) y aplicar calibracion
+    if (SGP.begin()) {
+        SGP.request();
+        delay(25);
+        SGP.read();
+        SGP.setBaseline(SGP30_BASELINE_ECO2, SGP30_BASELINE_TVOC);
+        sgp_ready = true;
+    }
 
     sensor_ft.setBus(&I2C_0);
     sensor_bk.setBus(&I2C_1);
