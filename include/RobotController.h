@@ -50,7 +50,7 @@ public:
     [[nodiscard]] bool has_same_params(const RobotParams& params) const;
 
     // Returns the current move params
-    [[nodiscard]] const RobotParams& get_params() const { return params_; }
+    [[nodiscard]] RobotParams get_params() const { return params_; }
 
     // Executes a command returning a command type or an error
     [[nodiscard]] ControllerResponse execute_command(std::string_view command);

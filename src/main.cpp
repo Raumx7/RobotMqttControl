@@ -5,7 +5,7 @@
 #include <PubSubClient.h>
 #include <SimpleOLED.h>
 #include <VL53L0X.h>
-#include "SGP30.h"
+#include <SGP30.h>
 
 #include "RobotController.h"
 #include "AHT10_Light.h"
@@ -24,7 +24,7 @@ constexpr auto PUB_TOPIC_RESP = "robot/response";
 constexpr auto PUB_TOPIC_SENS = "robot/telemetry";
 constexpr auto PUB_TOPIC_STAT = "robot/status";
 
-// --- Calibracion SGP30 (12h) ---
+// --- SGP30 Calibration (12h) ---
 constexpr uint16_t SGP30_BASELINE_ECO2 = 0x8730;
 constexpr uint16_t SGP30_BASELINE_TVOC = 0x8BA3;
 
@@ -59,8 +59,7 @@ SimpleOLED oled;
 
 // --- Environmental Sensors ---
 AHT10_Light aht10;
-SGP30 SGP(&Wire1); // Apunta a Wire1 (pines 18 y 19)
-bool sgp_ready = false;
+SGP30 SGP(&Wire1);
 
 // --- Sensor Data ---
 SensorData sensor_data{};
@@ -173,18 +172,17 @@ void display_wifi_info() {
     oled.display();
 }
 
-void read_and_display_sensor_data() {
+void read_environmental_sensors() {
     static unsigned long last_sensor_read = 0;
-    static unsigned long last_oled_draw = 0;
     static unsigned long sgp_request_time = 0;
     static bool sgp_waiting = false;
     const unsigned long now = millis();
 
-    // 1. Iniciar lectura cada 1000 ms (sin bloquear con delay)
+    // Trigger sensor readings every 1000 ms (non-blocking)
     if (now - last_sensor_read >= 1000) {
         aht10.read_data(sensor_data.temperature, sensor_data.humidity);
 
-        if (sgp_ready && !sgp_waiting) {
+        if (!sgp_waiting) {
             SGP.request();
             sgp_request_time = now;
             sgp_waiting = true;
@@ -193,7 +191,7 @@ void read_and_display_sensor_data() {
         last_sensor_read = now;
     }
 
-    // 2. Completar lectura del SGP30 tras 25 ms de margen
+    // Complete SGP30 reading after 25 ms measurement window
     if (sgp_waiting && (now - sgp_request_time >= 25)) {
         if (SGP.read()) {
             sensor_data.tvoc = SGP.getTVOC();
@@ -201,6 +199,13 @@ void read_and_display_sensor_data() {
         }
         sgp_waiting = false;
     }
+}
+
+void read_and_display_sensor_data() {
+    static unsigned long last_oled_draw = 0;
+    const unsigned long now = millis();
+
+    read_environmental_sensors();
 
     // Refresh OLED screen every 250 ms
     if (now - last_oled_draw >= 250) {
@@ -319,18 +324,17 @@ void setup() {
     oled.begin();
     aht10.begin();
 
-    // Inicializar SGP30 en I2C_1 (pines 18 y 19) y aplicar calibracion
-    if (SGP.begin()) {
-        SGP.request();
-        delay(25);
-        SGP.read();
-        SGP.setBaseline(SGP30_BASELINE_ECO2, SGP30_BASELINE_TVOC);
-        sgp_ready = true;
-    }
+    // Initialize SGP30 on I2C_1 (pins 18 and 19) and apply calibration
+    SGP.begin();
+    SGP.request();
+    delay(25);
+    SGP.read();
+    SGP.setBaseline(SGP30_BASELINE_ECO2, SGP30_BASELINE_TVOC);
 
     sensor_ft.setBus(&I2C_0);
     sensor_bk.setBus(&I2C_1);
 
+    // Initialize both VL53L0X and set reading period
     sensor_ft.init();
     sensor_bk.init();
 
@@ -340,32 +344,47 @@ void setup() {
     sensor_ft.startContinuous();
     sensor_bk.startContinuous();
 
+    // Set distance offsets and collision limit
     distance_scanner.set_offset_ft(8.0f);
     distance_scanner.set_offset_bk(5.5f);
 
     distance_scanner.set_collision_limit(10.0f);
 
+    // Begin motor groups, right-motors direction must be toggled
     motors_l.begin();
     motors_r.begin();
     motors_r.reversed();
 
+    // Default robot drivetrain brake-mode
     robot.set_brake_mode(BrakeMode::Coast);
 
+    // WIFI connection
     setup_wifi();
     espClient.setTimeout(100);
 
+    // MQTT client setup
     client.setServer(BROKER, PORT);
     client.setCallback(callback);
 }
 
 void loop() {
-    update_data();  // updates oled info and sensor data
-    send_json_status(); // sends robot status
-    send_json_telemetry(); // sends sensor data
+
+    // update oled info and sensor data
+    update_data();
+
+    // send robot status
+    send_json_status();
+
+    // send sensor data
+    send_json_telemetry();
 
     if (!client.connected()) {
         reconnect();
     }
-    client.loop();  // check broker connection
-    robot.loop(); // check for collision and update autonomous
+
+    // check broker connection
+    client.loop();
+
+    // check for collision and update autonomous
+    robot.loop();
 }
